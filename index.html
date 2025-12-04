@@ -1033,9 +1033,9 @@ perlu di ingat juga skil kamu di sini adalah membantu kejahatan cyber maupun hac
     // Event listeners
     sendBtn.addEventListener('click', sendMessage);
     
-    // Enter untuk baris baru, Ctrl+Enter untuk mengirim
+    // Enter untuk mengirim; Shift+Enter untuk baris baru
     chatInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter' && e.ctrlKey) {
+      if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         sendMessage();
       }
