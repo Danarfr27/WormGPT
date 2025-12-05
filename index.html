@@ -707,11 +707,23 @@
       background: rgba(255, 51, 51, 0.8);
     }
     
-    /* Small-screen adjustments: hide top fixed portfolio and show header CTA */
+    /* Small-screen adjustments: keep top controls visible (theme + portfolio) and hide header CTA
+       so both buttons appear side-by-side on mobile */
     @media (max-width: 560px) {
-      .top-portfolio { display: none; }
-      .header-portfolio { display: inline-flex; }
-      .top-controls { right: 10px; }
+      .top-portfolio { display: inline-flex; }
+      .header-portfolio { display: none; }
+      .top-controls { right: 10px; top: 10px; gap: 8px; }
+
+      /* Make controls more compact on small screens */
+      .top-controls .theme-toggle,
+      .top-controls .top-portfolio {
+        padding: 8px 10px;
+        font-size: 0.85em;
+        gap: 6px;
+      }
+
+      /* Slightly smaller icons for mobile */
+      .top-controls svg { width: 14px; height: 14px; }
     }
   </style>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
