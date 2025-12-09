@@ -1,35 +1,64 @@
+const RATE_LIMIT = new Map();
+
+function isRateLimited(ip) {
+  const now = Date.now();
+  const windowMs = 10_000;
+  const max = 5;
+
+  const data = RATE_LIMIT.get(ip) || [];
+  const recent = data.filter(t => now - t < windowMs);
+  recent.push(now);
+  RATE_LIMIT.set(ip, recent);
+
+  return recent.length > max;
+}
+
+function extractGeminiError(data) {
+  if (!data || !data.error) return null;
+
+  return {
+    code: data.error.code,
+    status: data.error.status,
+    message: data.error.message
+  };
+}
+
 export default async function handler(req, res) {
-  const requestId = crypto.randomUUID?.() || Date.now().toString();
+  const start = Date.now();
 
   if (req.method !== 'POST') {
-    console.warn(`[${requestId}] Invalid method:`, req.method);
-    return res.status(405).json({ error: 'Method not allowed', requestId });
+    console.warn('[405] Invalid method:', req.method);
+    return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { contents } = req.body || {};
+  const ip =
+    req.headers['x-forwarded-for']?.split(',')[0] ||
+    req.socket?.remoteAddress ||
+    'unknown';
 
-  console.log(`[${requestId}] ===== INCOMING REQUEST =====`);
-  console.log(`[${requestId}] Method:`, req.method);
-  console.log(`[${requestId}] Body:`, JSON.stringify(req.body, null, 2));
+  if (isRateLimited(ip)) {
+    console.warn('[429][LOCAL] IP:', ip);
+    return res.status(429).json({
+      error: 'Rate limit exceeded',
+      source: 'local',
+      message: 'Terlalu banyak request. Coba lagi dalam 10 detik.'
+    });
+  }
+
+  const { contents } = req.body;
+
+  console.log('====== REQUEST ======');
+  console.log('IP:', ip);
+  console.log('BODY:', JSON.stringify(req.body, null, 2));
 
   const API_KEY = process.env.GENERATIVE_API_KEY;
   const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
 
   if (!API_KEY) {
-    console.error(`[${requestId}] Missing GENERATIVE_API_KEY`);
+    console.error('[CONFIG] Missing GENERATIVE_API_KEY');
     return res.status(500).json({
       error: 'Server not configured',
-      cause: 'ENV_MISSING',
-      requestId
-    });
-  }
-
-  if (!contents) {
-    console.error(`[${requestId}] Missing contents in body`);
-    return res.status(400).json({
-      error: 'Bad request',
-      cause: 'CONTENTS_MISSING',
-      requestId
+      source: 'config'
     });
   }
 
@@ -43,53 +72,48 @@ export default async function handler(req, res) {
       body: JSON.stringify({ contents })
     });
 
-    const raw = await response.text();
-    let data;
+    const data = await response.json();
+    const geminiError = extractGeminiError(data);
 
-    try {
-      data = JSON.parse(raw);
-    } catch (e) {
-      console.error(`[${requestId}] Failed to parse JSON:`, raw);
-      return res.status(502).json({
-        error: 'Invalid JSON from Google API',
-        cause: 'PARSE_ERROR',
-        requestId
+    console.log('====== GEMINI RESPONSE ======');
+    console.log(JSON.stringify(data, null, 2));
+
+    if (response.status === 429) {
+      console.error('[429][GEMINI]');
+      return res.status(429).json({
+        error: 'Rate limit',
+        source: 'gemini',
+        details: geminiError
       });
     }
-
-    console.log(`[${requestId}] ===== GEMINI RESPONSE =====`);
-    console.log(`[${requestId}] Status:`, response.status);
-    console.log(`[${requestId}] Body:`, JSON.stringify(data, null, 2));
 
     if (!response.ok) {
-      const cause =
-        data?.error?.message ||
-        data?.error?.status ||
-        'UNKNOWN_EXTERNAL_ERROR';
-
-      console.error(`[${requestId}] External API failed:`, cause);
-
-      return res.status(502).json({
-        error: 'External API error',
-        cause,
-        status: response.status,
-        requestId
+      console.error('[GEMINI ERROR]', response.status, geminiError);
+      return res.status(response.status).json({
+        error: 'Gemini API error',
+        source: 'gemini',
+        details: geminiError
       });
     }
 
+    const duration = Date.now() - start;
+    console.log('[200] Success in', duration, 'ms');
+
     return res.status(200).json({
-      ...data,
-      requestId
+      ok: true,
+      model: GEMINI_MODEL,
+      duration_ms: duration,
+      result: data
     });
 
-  } catch (error) {
-    console.error(`[${requestId}] Proxy exception:`, error.message);
-    console.error(error.stack);
+  } catch (err) {
+    console.error('====== INTERNAL ERROR ======');
+    console.error(err.stack || err.message);
 
     return res.status(500).json({
       error: 'Internal server error',
-      cause: error.message,
-      requestId
+      source: 'internal',
+      message: err.message
     });
   }
 }
