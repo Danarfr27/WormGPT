@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   const apiKeys = keysString.split(',').filter(k => k.trim().length > 0);
   
   // Default ke 1.5-flash jika env tidak diisi (karena 2.5 belum rilis publik saat ini)
-  const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
+  const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
 
   if (apiKeys.length === 0) {
     console.error('Missing GEMINI_API_KEYS environment variable');
@@ -85,3 +85,4 @@ export default async function handler(req, res) {
     });
   }
 }
+
